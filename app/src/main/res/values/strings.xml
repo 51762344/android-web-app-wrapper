@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="error_title_network">Unable to load page</string>
+    <string name="error_message_network">Check your connection, confirm the URL is reachable, and try again.</string>
+    <string name="error_title_ssl">Secure connection failed</string>
+    <string name="error_message_ssl">Android rejected the TLS certificate. Verify the public HTTPS endpoint is using a valid certificate chain.</string>
+    <string name="error_title_timeout">Request timed out</string>
+    <string name="error_message_timeout">The page took too long to respond. Retry and verify that the target site is reachable.</string>
+    <string name="error_title_configuration">Invalid app configuration</string>
+    <string name="error_message_configuration">This build is missing a valid http or https base URL.</string>
+    <string name="button_retry">Retry</string>
+    <string name="toast_no_browser">No browser app is available.</string>
+    <string name="content_description_webview">Embedded web app interface</string>
+    <string name="content_description_loading">Page loading progress</string>
+</resources>
