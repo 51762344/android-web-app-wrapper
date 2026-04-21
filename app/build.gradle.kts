@@ -77,6 +77,7 @@ val configuredBaseUrl = readAppConfig("baseUrl")
 val configuredLauncherForegroundResource = readAppConfig("launcherForegroundResource", "ic_foreground_default")
 val configuredLauncherBackgroundResource = readAppConfig("launcherBackgroundResource", "ic_background_default")
 val configuredEnablePullToRefresh = readBooleanAppConfig("enablePullToRefresh", true)
+val configuredEnablePromoPopupBlocking = readBooleanAppConfig("enablePromoPopupBlocking", true)
 
 val generatedResDir = layout.buildDirectory.dir("generated/app-config-res/main/res").get().asFile
 val generateLauncherResources = tasks.register<GenerateLauncherResourcesTask>("generateLauncherResources") {
@@ -105,6 +106,7 @@ android {
         vectorDrawables.useSupportLibrary = true
         buildConfigField("String", "DEFAULT_BASE_URL", "\"${configuredBaseUrl.escapeForGradleString()}\"")
         buildConfigField("boolean", "ENABLE_PULL_TO_REFRESH", configuredEnablePullToRefresh.toString())
+        buildConfigField("boolean", "ENABLE_PROMO_POPUP_BLOCKING", configuredEnablePromoPopupBlocking.toString())
         manifestPlaceholders["appLabel"] = configuredAppName
     }
 

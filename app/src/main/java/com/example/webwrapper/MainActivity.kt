@@ -16,6 +16,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.ValueCallback
 import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -190,12 +191,14 @@ class MainActivity : AppCompatActivity() {
                 super.onPageCommitVisible(view, url)
                 clearLoadTimeout()
                 hideErrorState()
+                injectPromoPopupBlocker(view)
             }
 
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
                 clearLoadTimeout()
                 binding.swipeRefresh.isRefreshing = false
+                injectPromoPopupBlocker(view)
                 if (!hasMainFrameLoadError) {
                     binding.loadingIndicator.isVisible = false
                 }
@@ -267,6 +270,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun injectPromoPopupBlocker(
+        view: WebView,
+        callback: ValueCallback<String>? = null,
+    ) {
+        if (!BuildConfig.ENABLE_PROMO_POPUP_BLOCKING) {
+            callback?.onReceiveValue("\"disabled\"")
+            return
+        }
+
+        view.evaluateJavascript(PROMO_POPUP_BLOCKER_SCRIPT, callback)
+    }
+
     private fun showErrorState(title: String, message: String) {
         clearLoadTimeout()
         binding.swipeRefresh.isRefreshing = false
@@ -318,5 +333,237 @@ class MainActivity : AppCompatActivity() {
         private const val WEB_VIEW_STATE_KEY = "web_view_state"
         private const val LOAD_TIMEOUT_MS = 20_000L
         private const val REFRESH_TRIGGER_DP = 144
+        private const val PROMO_POPUP_BLOCKER_SCRIPT = """
+            (function() {
+                if (!document || !document.documentElement) {
+                    return "no-document";
+                }
+
+                var blocker = window.__webWrapperPromoBlocker;
+                if (blocker && typeof blocker.scan === "function") {
+                    blocker.scan();
+                    return "rescanned";
+                }
+
+                var PROMO_TEXT_PATTERNS = [
+                    /open[\s-]*in[\s-]*app/i,
+                    /open[\s-]*app/i,
+                    /download[\s-]*app/i,
+                    /install[\s-]*app/i,
+                    /use[\s-]*app/i,
+                    /in[\s-]*the[\s-]*app/i,
+                    /app[\s-]*exclusive/i,
+                    /\u6253\u5f00\s*APP/i,
+                    /\u6253\u5f00\s*\u5ba2\u6237\u7aef/i,
+                    /\u4e0b\u8f7d\s*APP/i,
+                    /\u4e0b\u8f7d\s*\u5ba2\u6237\u7aef/i,
+                    /\u5ba2\u6237\u7aef\u5185\u6253\u5f00/i,
+                    /APP\u5185/i
+                ];
+
+                var PROMO_SELECTOR = [
+                    '[class*="open-app" i]',
+                    '[id*="open-app" i]',
+                    '[class*="download-app" i]',
+                    '[id*="download-app" i]',
+                    '[class*="app-banner" i]',
+                    '[id*="app-banner" i]',
+                    '[class*="smartbanner" i]',
+                    '[id*="smartbanner" i]',
+                    '[class*="app-promo" i]',
+                    '[id*="app-promo" i]',
+                    '[class*="open-in-app" i]',
+                    '[id*="open-in-app" i]',
+                    '[class*="callapp" i]',
+                    '[id*="callapp" i]',
+                    '[data-testid*="open-app" i]',
+                    '[data-testid*="download-app" i]'
+                ].join(',');
+
+                function ensureStyle() {
+                    if (document.getElementById('webwrapper-promo-popup-style')) {
+                        return;
+                    }
+
+                    var style = document.createElement('style');
+                    style.id = 'webwrapper-promo-popup-style';
+                    style.textContent =
+                        '.webwrapper-hidden-promo-popup {' +
+                        'display: none !important;' +
+                        'visibility: hidden !important;' +
+                        'opacity: 0 !important;' +
+                        'pointer-events: none !important;' +
+                        '}';
+                    (document.head || document.documentElement).appendChild(style);
+                }
+
+                function textLooksPromotional(text) {
+                    if (!text) {
+                        return false;
+                    }
+
+                    var normalized = text.replace(/\s+/g, ' ').trim().slice(0, 160);
+                    return PROMO_TEXT_PATTERNS.some(function(pattern) {
+                        return pattern.test(normalized);
+                    });
+                }
+
+                function hrefLooksExternalApp(href) {
+                    if (!href) {
+                        return false;
+                    }
+
+                    return /^(intent|market|itmss?|taobao|tmall|alipays|weixin|zhihu|snssdk|baiduboxapp):/i.test(href);
+                }
+
+                function shouldHideElement(node) {
+                    if (!(node instanceof HTMLElement)) {
+                        return false;
+                    }
+
+                    if (node.classList.contains('webwrapper-hidden-promo-popup')) {
+                        return false;
+                    }
+
+                    var style = window.getComputedStyle(node);
+                    if (!style || style.display === 'none' || style.visibility === 'hidden') {
+                        return false;
+                    }
+
+                    var rect = node.getBoundingClientRect();
+                    if (rect.width <= 0 || rect.height <= 0) {
+                        return false;
+                    }
+
+                    var viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+                    var viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+                    var position = style.position;
+                    var zIndex = Number(style.zIndex || '0');
+                    var nearBottom = rect.bottom >= viewportHeight - 24 && rect.top >= viewportHeight * 0.45;
+                    var bannerLike = rect.width >= viewportWidth * 0.6 && rect.height >= 36 && rect.height <= Math.max(220, viewportHeight * 0.35);
+                    var overlayLike = rect.width >= viewportWidth * 0.75 && rect.height >= viewportHeight * 0.2;
+                    var hasPromoSelector = node.matches(PROMO_SELECTOR);
+                    var hasPromoText = textLooksPromotional(node.innerText || '');
+                    var appLink = node.querySelector('a[href], button[data-href], [data-url], [data-href]');
+                    var linkedHref = appLink && (appLink.getAttribute('href') || appLink.getAttribute('data-url') || appLink.getAttribute('data-href') || '');
+                    var opensExternalApp = hrefLooksExternalApp(linkedHref || '');
+
+                    if (hasPromoSelector) {
+                        return true;
+                    }
+
+                    if ((position === 'fixed' || position === 'sticky') && zIndex >= 10 && nearBottom && bannerLike && (hasPromoText || opensExternalApp)) {
+                        return true;
+                    }
+
+                    if (position === 'fixed' && overlayLike && (hasPromoText || opensExternalApp)) {
+                        return true;
+                    }
+
+                    return false;
+                }
+
+                function hideNode(node) {
+                    if (!(node instanceof HTMLElement)) {
+                        return false;
+                    }
+
+                    if (!shouldHideElement(node)) {
+                        return false;
+                    }
+
+                    node.classList.add('webwrapper-hidden-promo-popup');
+                    return true;
+                }
+
+                function findHideTarget(node) {
+                    var current = node instanceof HTMLElement ? node : null;
+                    while (current && current !== document.body) {
+                        if (shouldHideElement(current)) {
+                            return current;
+                        }
+                        current = current.parentElement;
+                    }
+                    return null;
+                }
+
+                function scan() {
+                    ensureStyle();
+
+                    var hiddenCount = 0;
+                    document.querySelectorAll(PROMO_SELECTOR).forEach(function(node) {
+                        if (hideNode(node)) {
+                            hiddenCount += 1;
+                        }
+                    });
+
+                    document.querySelectorAll('body *').forEach(function(node) {
+                        if (hideNode(node)) {
+                            hiddenCount += 1;
+                        }
+                    });
+
+                    return hiddenCount;
+                }
+
+                document.addEventListener('click', function(event) {
+                    var target = event.target;
+                    if (!(target instanceof Element)) {
+                        return;
+                    }
+
+                    var trigger = target.closest('a[href], [data-url], [data-href]');
+                    if (!trigger) {
+                        return;
+                    }
+
+                    var href = trigger.getAttribute('href') || trigger.getAttribute('data-url') || trigger.getAttribute('data-href') || '';
+                    if (!hrefLooksExternalApp(href)) {
+                        return;
+                    }
+
+                    var container = findHideTarget(trigger);
+                    if (container) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        event.stopImmediatePropagation();
+                        hideNode(container);
+                    }
+                }, true);
+
+                var scanQueued = false;
+                var observer = new MutationObserver(function() {
+                    if (scanQueued) {
+                        return;
+                    }
+
+                    scanQueued = true;
+                    window.requestAnimationFrame(function() {
+                        scanQueued = false;
+                        scan();
+                    });
+                });
+
+                observer.observe(document.documentElement, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['class', 'style', 'id']
+                });
+
+                blocker = {
+                    scan: scan,
+                    observer: observer
+                };
+                window.__webWrapperPromoBlocker = blocker;
+
+                scan();
+                window.setTimeout(scan, 400);
+                window.setTimeout(scan, 1200);
+                window.setTimeout(scan, 2500);
+
+                return "installed";
+            })();
+        """
     }
 }

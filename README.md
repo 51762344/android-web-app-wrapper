@@ -19,6 +19,7 @@ This project is a small native Android `WebView` wrapper for dashboards, chats, 
 - Handles loading, network error, timeout, and SSL failure states
 - Maps Android back button to web history when possible
 - Lets you enable or disable native pull-to-refresh per app config
+- Can hide many common bottom app-promo banners and open-in-app popups
 
 ## Quick Start
 
@@ -57,6 +58,7 @@ baseUrl=https://your-app.example.com/
 launcherForegroundResource=ic_foreground_default
 launcherBackgroundResource=ic_background_default
 enablePullToRefresh=true
+enablePromoPopupBlocking=true
 ```
 
 Field meanings:
@@ -67,6 +69,7 @@ Field meanings:
 - `launcherForegroundResource`: Foreground icon resource
 - `launcherBackgroundResource`: Background icon resource
 - `enablePullToRefresh`: Whether native swipe-to-refresh is enabled
+- `enablePromoPopupBlocking`: Hide common bottom promo bars and open-in-app popups inside the wrapped site
 
 The Android launcher label comes from `appName` in the properties file, not from `app/src/main/res/values/strings.xml`.
 
